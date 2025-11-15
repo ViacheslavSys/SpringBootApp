@@ -13,13 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.syskov.MySecondAppSpringBoot.exception.UnsupportedCodeException;
 import ru.syskov.MySecondAppSpringBoot.exception.ValidationFailedException;
 import ru.syskov.MySecondAppSpringBoot.model.*;
-import ru.syskov.MySecondAppSpringBoot.service.ModifyRequestService;
-import ru.syskov.MySecondAppSpringBoot.service.ModifyResponseService;
-import ru.syskov.MySecondAppSpringBoot.service.ModifySourceRequestService;
-import ru.syskov.MySecondAppSpringBoot.service.ValidationService;
+import ru.syskov.MySecondAppSpringBoot.service.*;
 import ru.syskov.MySecondAppSpringBoot.util.DateTimeUtil;
 
-import java.text.SimpleDateFormat;
 import java.util.Date;
 
 @Slf4j
@@ -29,21 +25,27 @@ public class MyController {
     private final ValidationService validationService;
     private final ModifyResponseService modifyResponseService;
     private final ModifyRequestService modifyRequestService;
-
-
+    private final AnnualBonusService annualBonusService;
+    private final QuarterBonusService quarterBonusService;
 
     @Autowired
     public MyController(ValidationService validationService,
                         @Qualifier("ModifySystemTimeResponseService") ModifyResponseService modifyResponseService,
-                        @Qualifier("ModifySourceRequestService") ModifyRequestService modifyRequestService){
+                        @Qualifier("ModifySourceRequestService") ModifyRequestService modifyRequestService,
+                        AnnualBonusService annualBonusService,
+                        QuarterBonusService quarterBonusService) {
         this.validationService = validationService;
         this.modifyResponseService = modifyResponseService;
         this.modifyRequestService = modifyRequestService;
+        this.annualBonusService = annualBonusService;
+        this.quarterBonusService = quarterBonusService;
     }
 
     @PostMapping(value = "/feedback")
-    public ResponseEntity<Response> feedback(@Valid @RequestBody Request request,
-                                             BindingResult bindingResult){
+    public ResponseEntity<Response> feedback(
+            @Valid @RequestBody Request request,
+            BindingResult bindingResult
+    ) {
 
         log.info("request: {}", request);
 
@@ -58,27 +60,25 @@ public class MyController {
 
         log.info("response: {}", response);
 
-        try{
+        try {
             validationService.isValid(bindingResult);
             if ("123".equals(request.getUid())) {
                 log.error("UID = 123. Генерация исключения UnsupportedCodeException");
                 throw new UnsupportedCodeException("Ошибка: uid = 123 не поддерживается");
             }
-        } catch (ValidationFailedException e){
+        } catch (ValidationFailedException e) {
             response.setCode(Codes.FAILED);
             response.setErrorCode(ErrorCodes.VALIDATION_EXCEPTION);
             response.setErrorMessage(ErrorMessages.VALIDATION);
             log.error("response error: {}", response);
             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-        }
-        catch (UnsupportedCodeException e){
+        } catch (UnsupportedCodeException e) {
             response.setCode(Codes.FAILED);
             response.setErrorCode(ErrorCodes.UNSUPPORTED_EXCEPTION);
             response.setErrorMessage(ErrorMessages.UNSUPPORTED);
             log.error("response error: {}", response);
             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             response.setCode(Codes.FAILED);
             response.setErrorCode(ErrorCodes.UNKNOWN_EXCEPTION);
             response.setErrorMessage(ErrorMessages.UNKNOWN);
@@ -86,9 +86,10 @@ public class MyController {
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-
         modifyResponseService.modify(response);
         modifyRequestService.modify(request);
+        response.setAnnualBonus(annualBonusService.calculate(request));
+        response.setQuarterBonus(quarterBonusService.calculate(request));
         log.info("responseModify: {}", modifyResponseService.modify(response));
 
         return new ResponseEntity<>(modifyResponseService.modify(response), HttpStatus.OK);
